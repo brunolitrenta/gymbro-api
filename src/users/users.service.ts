@@ -7,16 +7,31 @@ import { v4 as uuidv4 } from 'uuid';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findOne(email: string): Promise<User | null> {
+  async findEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({
       where: { email },
     });
   }
 
+  async findId(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: { id },
+    });
+  }
+
   async createUser(data: User): Promise<string> {
-    this.findOne(data.email).then((user) => {
+
+    this.findEmail(data.email).then((user) => {
       if (user) {
         throw new Error('User already exists');
+      }
+    });
+
+    const id = uuidv4();
+
+    this.findId(id).then((user) => {
+      if (user) {
+        throw new Error('User ID already exists');
       }
     });
 
@@ -24,11 +39,17 @@ export class UsersService {
 
     const user = await this.prisma.user.create({
       data: {
-        id: uuidv4(),
+        id: id,
         email: data.email,
         password: data.password,
         type: data.type,
         name: data.name,
+        gender: data.gender,
+        birthDate: data.birthDate,
+        goal: data.goal,
+        height: data.height,
+        weight: data.weight,
+        medical: data.medical,
         createdAt: date,
         updatedAt: date,
       },
