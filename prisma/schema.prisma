@@ -1,0 +1,174 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  type      String
+  name      String
+  password  String
+  gender    String?
+  birthDate DateTime?
+  weight    Float?
+  height    Float?
+  goal      String?
+  medical   String?
+  plans     Plan[]
+  createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    workoutSessions WorkoutSession[]
+}
+
+model Plan {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  name      String
+
+  workouts  Workout[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+}
+
+model Workout {
+  id        String   @id @default(cuid())
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  name      String
+  day       Int
+
+  items     WorkoutExercise[]
+
+  sessions  WorkoutSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId])
+  @@unique([planId, day])
+}
+model ExerciseDefinition {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  isUnilateral Boolean   @default(false)
+  videoUrl     String?
+  imageUrl     String?
+
+  primaryMuscles ExerciseDefinitionOnMuscleGroup[]
+  equipments     ExerciseDefinitionOnEquipment[]
+
+  usedIn       WorkoutExercise[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([name])
+}
+
+model MuscleGroup {
+  id    String @id @default(cuid())
+  name  String @unique
+
+  exercises ExerciseDefinitionOnMuscleGroup[]
+}
+
+model Equipment {
+  id    String @id @default(cuid())
+  name  String @unique
+
+  exercises ExerciseDefinitionOnEquipment[]
+}
+
+model ExerciseDefinitionOnMuscleGroup {
+  exerciseDefinitionId String
+  muscleGroupId        String
+  isPrimary            Boolean @default(false)
+
+  exerciseDefinition ExerciseDefinition @relation(fields: [exerciseDefinitionId], references: [id], onDelete: Cascade)
+  muscleGroup        MuscleGroup        @relation(fields: [muscleGroupId], references: [id], onDelete: Cascade)
+
+  @@id([exerciseDefinitionId, muscleGroupId])
+  @@index([muscleGroupId])
+}
+
+model ExerciseDefinitionOnEquipment {
+  exerciseDefinitionId String
+  equipmentId          String
+
+  exerciseDefinition ExerciseDefinition @relation(fields: [exerciseDefinitionId], references: [id], onDelete: Cascade)
+  equipment          Equipment          @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@id([exerciseDefinitionId, equipmentId])
+  @@index([equipmentId])
+}
+
+model WorkoutExercise {
+  id             String   @id @default(cuid())
+  workoutId      String
+  workout        Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exerciseDefId  String
+  exerciseDef    ExerciseDefinition @relation(fields: [exerciseDefId], references: [id], onDelete: Restrict)
+
+  sets           Int?
+  reps           Int?
+  restSeconds    Int?
+  notes          String?
+
+  createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
+    setLogs SetLog[]
+
+  @@index([workoutId])
+  @@index([exerciseDefId])
+}
+
+model WorkoutSession {
+  id          String   @id @default(cuid())
+  workoutId   String?
+  workout     Workout? @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+  notes       String?
+
+  sets        SetLog[]
+
+  @@index([userId, startedAt])
+}
+
+model SetLog {
+  id                 String   @id @default(cuid())
+  sessionId          String
+  session            WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workoutExerciseId  String?
+  workoutExercise    WorkoutExercise? @relation(fields: [workoutExerciseId], references: [id], onDelete: SetNull)
+
+  setNumber          Int
+  weightKg           Decimal?
+  reps               Int?
+  distanceM          Decimal?
+  durationSeconds    Int?
+  notes              String?
+
+  @@index([sessionId])
+  @@index([workoutExerciseId])
+}
