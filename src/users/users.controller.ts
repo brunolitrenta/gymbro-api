@@ -6,7 +6,7 @@ import type { User } from '@prismaClient';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post('create')
+  @Post()
   createUser(@Body() userData: User) {
     return this.usersService.createUser(userData);
   }
