@@ -14,31 +14,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum userType {
+  trainer
+  normal
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  type      String
-  name      String
-  password  String
-  gender    String?
-  birthDate DateTime?
-  weight    Float?
-  height    Float?
-  goal      String?
-  medical   String?
-  plans     Plan[]
+  id              String           @id @default(cuid())
+  email           String           @unique
+  type            userType         @default(normal)
+  name            String
+  password        String
+  gender          String?
+  birthDate       DateTime?
+  weight          Float?
+  height          Float?
+  goal            String?
+  medical         String?
+  workoutDays     Int[]            @default([]) // Array de dias da semana: 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
+  plans           Plan[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  workoutSessions WorkoutSession[]
+  weightHistory   WeightHistory[]
+
+  trainerStudents TrainerRelation[] @relation("TrainerToAthlete")
+  studentTrainers TrainerRelation[] @relation("AthleteToTrainers")
+}
+
+model TrainerRelation {
+  trainerId String
+  studentEmail String
+  nickname  String?
   createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    workoutSessions WorkoutSession[]
+
+  trainer User @relation("TrainerToAthlete", fields: [trainerId], references: [id], onDelete: Cascade)
+  student User @relation("AthleteToTrainers", fields: [studentEmail], references: [email], onDelete: Cascade)
+
+  @@id([trainerId, studentEmail])
+  @@index([studentEmail])
 }
 
 model Plan {
-  id        String   @id @default(cuid())
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  name      String
+  id       String @id @default(cuid())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  name     String
 
-  workouts  Workout[]
+  workouts Workout[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -47,51 +70,52 @@ model Plan {
 }
 
 model Workout {
-  id        String   @id @default(cuid())
-  planId    String
-  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
-  name      String
-  day       Int
+  id     String @id @default(cuid())
+  planId String
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  name   String
+  day    Int
 
-  items     WorkoutExercise[]
+  items WorkoutExercise[]
 
-  sessions  WorkoutSession[]
+  sessions WorkoutSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([planId])
   @@unique([planId, day])
+  @@index([planId])
 }
+
 model ExerciseDefinition {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   name         String
   description  String?
-  isUnilateral Boolean   @default(false)
+  isUnilateral Boolean @default(false)
   videoUrl     String?
   imageUrl     String?
 
   primaryMuscles ExerciseDefinitionOnMuscleGroup[]
   equipments     ExerciseDefinitionOnEquipment[]
 
-  usedIn       WorkoutExercise[]
+  usedIn WorkoutExercise[]
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([name])
 }
 
 model MuscleGroup {
-  id    String @id @default(cuid())
-  name  String @unique
+  id   String @id @default(cuid())
+  name String @unique
 
   exercises ExerciseDefinitionOnMuscleGroup[]
 }
 
 model Equipment {
-  id    String @id @default(cuid())
-  name  String @unique
+  id   String @id @default(cuid())
+  name String @unique
 
   exercises ExerciseDefinitionOnEquipment[]
 }
@@ -120,55 +144,66 @@ model ExerciseDefinitionOnEquipment {
 }
 
 model WorkoutExercise {
-  id             String   @id @default(cuid())
-  workoutId      String
-  workout        Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
-  exerciseDefId  String
-  exerciseDef    ExerciseDefinition @relation(fields: [exerciseDefId], references: [id], onDelete: Restrict)
+  id            String             @id @default(cuid())
+  workoutId     String
+  workout       Workout            @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exerciseDefId String
+  exerciseDef   ExerciseDefinition @relation(fields: [exerciseDefId], references: [id], onDelete: Restrict)
 
-  sets           Int?
-  reps           Int?
-  restSeconds    Int?
-  notes          String?
+  sets        Int?
+  reps        Int?
+  restSeconds Int?
+  notes       String?
 
-  createdAt      DateTime @default(now())
-    updatedAt      DateTime @updatedAt
-    setLogs SetLog[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  setLogs   SetLog[]
 
   @@index([workoutId])
   @@index([exerciseDefId])
 }
 
 model WorkoutSession {
-  id          String   @id @default(cuid())
-  workoutId   String?
-  workout     Workout? @relation(fields: [workoutId], references: [id], onDelete: SetNull)
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  workoutId String?
+  workout   Workout? @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  startedAt   DateTime @default(now())
-  finishedAt  DateTime?
-  notes       String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  notes      String?
 
-  sets        SetLog[]
+  sets SetLog[]
 
   @@index([userId, startedAt])
 }
 
 model SetLog {
-  id                 String   @id @default(cuid())
-  sessionId          String
-  session            WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  workoutExerciseId  String?
-  workoutExercise    WorkoutExercise? @relation(fields: [workoutExerciseId], references: [id], onDelete: SetNull)
+  id                String           @id @default(cuid())
+  sessionId         String
+  session           WorkoutSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  workoutExerciseId String?
+  workoutExercise   WorkoutExercise? @relation(fields: [workoutExerciseId], references: [id], onDelete: SetNull)
 
-  setNumber          Int
-  weightKg           Decimal?
-  reps               Int?
-  distanceM          Decimal?
-  durationSeconds    Int?
-  notes              String?
+  setNumber       Int
+  weightKg        Decimal?
+  reps            Int?
+  distanceM       Decimal?
+  durationSeconds Int?
+  notes           String?
 
   @@index([sessionId])
   @@index([workoutExerciseId])
+}
+
+model WeightHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weightKg  Float
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
 }
