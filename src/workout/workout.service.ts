@@ -4,41 +4,177 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Plan, Workout } from '@prismaClient';
+import { Plan, Prisma, Workout } from '@prismaClient';
 import { PrismaService } from 'prisma/prisma.service';
+import { ApiResponse } from '../common/response.interface';
 
 @Injectable()
 export class WorkoutService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createPlan(data: Plan): Promise<string> {
-    const plan = await this.prisma.plan.create({
-      data: {
-        name: data.name,
-        id: data.id,
+  async createPlan(data: { name: string; authorId: string }): Promise<ApiResponse<Plan>> {
+    const existingPlans = await this.prisma.plan.findMany({
+      where: {
         authorId: data.authorId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        name: {
+          startsWith: data.name,
+        },
+      },
+      select: {
+        name: true,
       },
     });
-    return `Workout plan created with ID: ${plan.id}`;
+
+    let finalName = data.name;
+
+    if (existingPlans.length > 0) {
+      const existingNames = existingPlans.map((p) => p.name);
+      
+      if (existingNames.includes(data.name)) {
+        let counter = 2;
+        
+        while (existingNames.includes(`${data.name} (${counter})`)) {
+          counter++;
+        }
+        
+        finalName = `${data.name} (${counter})`;
+      }
+    }
+
+    const plan = await this.prisma.plan.create({
+      data: {
+        name: finalName,
+        authorId: data.authorId,
+      },
+    });
+    
+    return {
+      data: plan,
+      message: 'Plano de treino criado com sucesso',
+    };
   }
 
-  async createWorkout(data: Workout): Promise<string> {
+  async sendPlan(data: {
+    trainerId: string;
+    studentEmail?: string;
+    studentId?: string;
+    planId: string;
+    makeActive?: boolean;
+  }) {
+    const {
+      trainerId,
+      studentEmail,
+      studentId: studentIdInput,
+      planId,
+      makeActive = true,
+    } = data;
+
+    const student = await (async () => {
+      if (studentIdInput) {
+        return this.prisma.user.findUnique({ where: { id: studentIdInput } });
+      }
+      if (studentEmail) {
+        return this.prisma.user.findUnique({ where: { email: studentEmail } });
+      }
+      throw new Error('Informe studentEmail ou studentId.');
+    })();
+
+    const [trainer, plan] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: trainerId } }),
+      this.prisma.plan.findUnique({ where: { id: planId } }),
+    ]);
+
+    if (!trainer || trainer.type !== 'trainer') {
+      throw new Error(
+        'Somente usuários do tipo "trainer" podem encaminhar treinos.',
+      );
+    }
+    if (!student) {
+      throw new Error('Aluno não encontrado.');
+    }
+    if (student.type !== 'normal') {
+      throw new Error('O destinatário precisa ser um usuário normal.');
+    }
+    if (!plan || plan.authorId !== trainerId) {
+      throw new Error('Plano não encontrado ou não pertence a este trainer.');
+    }
+
+    const relation = await this.prisma.trainerRelation.findUnique({
+      where: {
+        trainerId_studentEmail: { trainerId, studentEmail: student.email },
+      },
+    });
+    if (!relation) {
+      throw new Error('O aluno não está vinculado a este treinador.');
+    }
+
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        if (makeActive) {
+          await tx.planAssignment.updateMany({
+            where: { studentId: student.id, active: true },
+            data: { active: false },
+          });
+        }
+
+        const assignment = await tx.planAssignment.upsert({
+          where: { planId_studentId: { planId, studentId: student.id } },
+          update: {
+            startDate: new Date(),
+            ...(makeActive ? { active: true } : {}),
+          },
+          create: {
+            planId,
+            trainerId,
+            studentId: student.id,
+            startDate: new Date(),
+            active: makeActive,
+          },
+          include: {
+            plan: {
+              select: { id: true, name: true },
+            },
+            student: { select: { id: true, name: true, email: true } },
+            trainer: { select: { id: true, name: true } },
+          },
+        });
+
+        return assignment;
+      });
+
+      // (opcional) notificar o aluno aqui (email/push), se tiver infra de notificações
+      // await notifyStudent(result.student.email, `Você recebeu o plano ${result.plan.name}`)
+
+      return result;
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        throw new Error('Este plano já foi encaminhado para este aluno.');
+      }
+      throw e;
+    }
+  }
+
+  async createWorkout(data: Workout): Promise<ApiResponse<{ id: string }>> {
     const workout = await this.prisma.workout.create({
       data: {
         name: data.name,
-        id: data.id,
         planId: data.planId,
         createdAt: new Date(),
         updatedAt: new Date(),
         day: data.day,
       },
     });
-    return `Workout created with ID: ${workout.id}`;
+    
+    return {
+      data: { id: workout.id },
+      message: 'Treino criado com sucesso',
+    };
   }
 
-  async getAllPlans(authorId: string): Promise<Plan[]> {
+  async getAllPlans(authorId: string): Promise<ApiResponse<Plan[]>> {
     const plans = await this.prisma.plan.findMany({
       where: {
         authorId: authorId,
@@ -47,10 +183,122 @@ export class WorkoutService {
     if (!plans || plans.length === 0) {
       throw new NotFoundException('Nenhum plano encontrado para este autor');
     }
-    return plans;
+    
+    return {
+      data: plans,
+      message: 'Planos obtidos com sucesso',
+    };
   }
 
-  async getWorkoutsByPlanId(planId: string): Promise<Workout[]> {
+  // Busca planos recebidos por um aluno (via PlanAssignment)
+  async getReceivedPlans(studentId: string) {
+    const assignments = await this.prisma.planAssignment.findMany({
+      where: {
+        studentId: studentId,
+      },
+      include: {
+        plan: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+            workouts: true,
+          },
+        },
+        trainer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return {
+      data: assignments,
+      message: 'Planos recebidos obtidos com sucesso',
+    };
+  }
+
+  async getAllAccessiblePlans(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, type: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const [createdPlans, receivedAssignments] = await Promise.all([
+      this.prisma.plan.findMany({
+        where: { authorId: userId },
+        include: {
+          workouts: true,
+        },
+      }),
+      this.prisma.planAssignment.findMany({
+        where: { studentId: userId },
+        include: {
+          plan: {
+            include: {
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+              workouts: true,
+            },
+          },
+          trainer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Mesclar planos criados e recebidos em uma única lista
+    const allPlans = [
+      ...createdPlans.map((plan) => ({
+        ...plan,
+        source: 'created' as const,
+        assignment: null,
+      })),
+      ...receivedAssignments.map((assignment) => ({
+        ...assignment.plan,
+        source: 'received' as const,
+        assignment: {
+          id: assignment.id,
+          trainerId: assignment.trainerId,
+          startDate: assignment.startDate,
+          active: assignment.active,
+          createdAt: assignment.createdAt,
+          trainer: assignment.trainer,
+        },
+      })),
+    ];
+
+    return {
+      data: allPlans,
+      message: 'Todos os planos acessíveis obtidos com sucesso',
+    };
+  }
+
+  async getWorkoutsByPlanId(planId: string): Promise<ApiResponse<Workout[]>> {
     const workouts = await this.prisma.workout.findMany({
       where: {
         planId: planId,
@@ -59,7 +307,11 @@ export class WorkoutService {
     if (!workouts || workouts.length === 0) {
       throw new NotFoundException('Nenhum treino encontrado para este plano');
     }
-    return workouts;
+    
+    return {
+      data: workouts,
+      message: 'Treinos obtidos com sucesso',
+    };
   }
 
   async getExercisesByWorkoutId(id: string) {
@@ -69,13 +321,19 @@ export class WorkoutService {
       },
     });
     if (!exercises || exercises.length === 0) {
-      throw new NotFoundException('Nenhum exercício encontrado para este treino');
+      throw new NotFoundException(
+        'Nenhum exercício encontrado para este treino',
+      );
     }
-    return exercises;
+    
+    return {
+      data: exercises,
+      message: 'Exercícios obtidos com sucesso',
+    };
   }
 
   async startSession(userId: string, workoutId?: string) {
-    return this.prisma.workoutSession.create({
+    const session = await this.prisma.workoutSession.create({
       data: {
         userId,
         workoutId: workoutId ?? null,
@@ -83,15 +341,21 @@ export class WorkoutService {
       },
       include: { sets: true },
     });
+    
+    return {
+      data: session,
+      message: 'Sessão de treino iniciada com sucesso',
+    };
   }
 
   async addSetToSession(
     userId: string,
     sessionId: string,
     payload: {
-      workoutExerciseId?: string;
-      weightKg?: number;
-      reps?: number;
+      workoutExerciseId: string;
+      weightKg: number;
+      sets: number;
+      reps: number;
       distanceM?: number;
       durationSeconds?: number;
       notes?: string;
@@ -107,27 +371,15 @@ export class WorkoutService {
     if (session.finishedAt)
       throw new BadRequestException('Sessão já finalizada');
 
-    // validação super básica (opcional)
     if (payload.reps != null && typeof payload.reps !== 'number') {
       throw new BadRequestException('reps deve ser um número');
     }
-
-    // setNumber sequencial por (sessão + exercício) — simples e suficiente
-    const last = await this.prisma.setLog.findFirst({
-      where: {
-        sessionId,
-        workoutExerciseId: payload.workoutExerciseId ?? null,
-      },
-      orderBy: { setNumber: 'desc' },
-      select: { setNumber: true },
-    });
-    const nextSetNumber = (last?.setNumber ?? 0) + 1;
 
     const set = await this.prisma.setLog.create({
       data: {
         sessionId,
         workoutExerciseId: payload.workoutExerciseId ?? null,
-        setNumber: nextSetNumber,
+        setNumber: payload.sets ?? null,
         weightKg: payload.weightKg ?? null,
         reps: payload.reps ?? null,
         distanceM: payload.distanceM ?? null,
@@ -136,7 +388,10 @@ export class WorkoutService {
       },
     });
 
-    return set;
+    return {
+      data: set,
+      message: 'Série adicionada à sessão com sucesso',
+    };
   }
 
   async finishSession(userId: string, sessionId: string) {
@@ -147,11 +402,21 @@ export class WorkoutService {
     if (!session) throw new NotFoundException('Sessão não encontrada');
     if (session.userId !== userId)
       throw new ForbiddenException('Usuário não autorizado');
-    if (session.finishedAt) return session;
+    if (session.finishedAt) {
+      return {
+        data: session,
+        message: 'Sessão já estava finalizada',
+      };
+    }
 
-    return this.prisma.workoutSession.update({
+    const finishedSession = await this.prisma.workoutSession.update({
       where: { id: sessionId },
       data: { finishedAt: new Date() },
     });
+    
+    return {
+      data: finishedSession,
+      message: 'Sessão de treino finalizada com sucesso',
+    };
   }
 }
