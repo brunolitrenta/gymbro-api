@@ -3,6 +3,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from 'prisma/prisma.service';
 import { User } from '@prismaClient';
 import { v4 as uuidv4 } from 'uuid';
+import { ApiResponse } from '../common/response.interface';
 
 @Injectable()
 export class UsersService {
@@ -14,24 +15,10 @@ export class UsersService {
     });
   }
 
-  async findId(id: string): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { id },
-    });
-  }
-
-  async createUser(data: User): Promise<string> {
+  async createUser(data: User): Promise<ApiResponse<{ id: string }>> {
     const existingEmail = await this.findEmail(data.email);
     if (existingEmail) {
       throw new ForbiddenException('Email já está em uso');
-    }
-
-    let id = uuidv4();
-    let existingId = await this.findId(id);
-    
-    while (existingId) {
-      id = uuidv4();
-      existingId = await this.findId(id);
     }
 
     const date = new Date();
@@ -40,7 +27,6 @@ export class UsersService {
 
     const user = await this.prisma.user.create({
       data: {
-        id: id,
         email: data.email,
         password: hashedPassword,
         type: data.type,
@@ -55,14 +41,18 @@ export class UsersService {
         updatedAt: date,
       },
     });
-    return `User created with ID: ${user.id}`;
+    
+    return {
+      data: { id: user.id },
+      message: 'Usuário criado com sucesso',
+    };
   }
 
   async createRelation(data: {
     trainerId: string;
     studentEmail: string;
     nickname?: string;
-  }) {
+  }): Promise<ApiResponse<{ trainerId: string; studentEmail: string; nickname?: string }>> {
     const relation = await this.prisma.trainerRelation.create({
       data: {
         trainerId: data.trainerId,
@@ -70,10 +60,18 @@ export class UsersService {
         nickname: data.nickname,
       },
     });
-    return `Relation created! Trainer ID: ${relation.trainerId} - Athlete Email: ${relation.studentEmail}`;
+    
+    return {
+      data: {
+        trainerId: relation.trainerId,
+        studentEmail: relation.studentEmail,
+        nickname: relation.nickname || undefined,
+      },
+      message: 'Relação entre treinador e aluno criada com sucesso',
+    };
   }
 
-  async deleteRelation(data: { trainerId: string; studentEmail: string }) {
+  async deleteRelation(data: { trainerId: string; studentEmail: string }): Promise<ApiResponse<null>> {
     await this.prisma.trainerRelation.delete({
       where: {
         trainerId_studentEmail: {
@@ -82,7 +80,11 @@ export class UsersService {
         },
       },
     });
-    return `Relation deleted! Trainer ID: ${data.trainerId} - Athlete Email: ${data.studentEmail}`;
+    
+    return {
+      data: null,
+      message: 'Relação entre treinador e aluno removida com sucesso',
+    };
   }
 
   async getRelations(trainerId: string) {
@@ -90,7 +92,11 @@ export class UsersService {
       where: { trainerId },
       include: { student: true },
     });
-    return relations;
+    
+    return {
+      data: relations,
+      message: 'Relações obtidas com sucesso',
+    };
   }
 
   async addWeightHistory(data: {
@@ -106,7 +112,11 @@ export class UsersService {
         date: data.date || new Date(),
       },
     });
-    return weightHistory;
+    
+    return {
+      data: weightHistory,
+      message: 'Peso registrado com sucesso',
+    };
   }
 
   async getWeightHistory(userId: string, limit?: number) {
@@ -115,14 +125,22 @@ export class UsersService {
       orderBy: { date: 'desc' },
       take: limit,
     });
-    return history;
+    
+    return {
+      data: history,
+      message: 'Histórico de peso obtido com sucesso',
+    };
   }
 
-  async deleteWeightHistory(id: string) {
+  async deleteWeightHistory(id: string): Promise<ApiResponse<null>> {
     await this.prisma.weightHistory.delete({
       where: { id },
     });
-    return `Weight history entry deleted with ID: ${id}`;
+    
+    return {
+      data: null,
+      message: 'Registro de peso removido com sucesso',
+    };
   }
 
   async updateWeightHistory(
@@ -136,7 +154,11 @@ export class UsersService {
         date: data.date,
       },
     });
-    return updated;
+    
+    return {
+      data: updated,
+      message: 'Registro de peso atualizado com sucesso',
+    };
   }
 
   /**
@@ -286,12 +308,15 @@ export class UsersService {
     longestStreak = Math.max(longestStreak, tempStreak);
 
     return {
-      currentStreak,
-      longestStreak,
-      lastWorkoutDate: new Date(uniqueDates[0]),
-      isActiveToday,
-      totalWorkoutDays: uniqueDates.length,
-      scheduledWorkoutDays: workoutDays,
+      data: {
+        currentStreak,
+        longestStreak,
+        lastWorkoutDate: new Date(uniqueDates[0]),
+        isActiveToday,
+        totalWorkoutDays: uniqueDates.length,
+        scheduledWorkoutDays: workoutDays,
+      },
+      message: 'Sequência de treinos obtida com sucesso',
     };
   }
 
@@ -310,8 +335,8 @@ export class UsersService {
     });
 
     return {
+      data: { workoutDays: updated.workoutDays },
       message: 'Dias de treino configurados com sucesso',
-      workoutDays: updated.workoutDays,
     };
   }
 
@@ -324,8 +349,11 @@ export class UsersService {
     const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     
     return {
-      workoutDays: user?.workoutDays || [],
-      workoutDaysNames: (user?.workoutDays || []).map(day => dayNames[day]),
+      data: {
+        workoutDays: user?.workoutDays || [],
+        workoutDaysNames: (user?.workoutDays || []).map(day => dayNames[day]),
+      },
+      message: 'Dias de treino obtidos com sucesso',
     };
   }
 }

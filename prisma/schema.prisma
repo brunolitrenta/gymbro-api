@@ -40,13 +40,16 @@ model User {
 
   trainerStudents TrainerRelation[] @relation("TrainerToAthlete")
   studentTrainers TrainerRelation[] @relation("AthleteToTrainers")
+
+  sentAssignments     PlanAssignment[] @relation("AssignmentTrainer")
+  receivedAssignments PlanAssignment[] @relation("AssignmentStudent")
 }
 
 model TrainerRelation {
-  trainerId String
+  trainerId    String
   studentEmail String
-  nickname  String?
-  createdAt DateTime @default(now())
+  nickname     String?
+  createdAt    DateTime @default(now())
 
   trainer User @relation("TrainerToAthlete", fields: [trainerId], references: [id], onDelete: Cascade)
   student User @relation("AthleteToTrainers", fields: [studentEmail], references: [email], onDelete: Cascade)
@@ -66,7 +69,34 @@ model Plan {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  assignments PlanAssignment[]
+
   @@index([authorId])
+}
+
+model PlanAssignment {
+  id     String @id @default(cuid())
+  planId String
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  trainerId String
+  trainer   User   @relation("AssignmentTrainer", fields: [trainerId], references: [id], onDelete: Cascade)
+
+  studentId String
+  student   User   @relation("AssignmentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  active Boolean @default(true)
+
+  message   String?
+  startDate DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planId, studentId])
+  @@index([studentId])
+  @@index([trainerId])
+  @@index([planId])
 }
 
 model Workout {
@@ -96,7 +126,6 @@ model ExerciseDefinition {
   imageUrl     String?
 
   primaryMuscles ExerciseDefinitionOnMuscleGroup[]
-  equipments     ExerciseDefinitionOnEquipment[]
 
   usedIn WorkoutExercise[]
 
@@ -113,13 +142,6 @@ model MuscleGroup {
   exercises ExerciseDefinitionOnMuscleGroup[]
 }
 
-model Equipment {
-  id   String @id @default(cuid())
-  name String @unique
-
-  exercises ExerciseDefinitionOnEquipment[]
-}
-
 model ExerciseDefinitionOnMuscleGroup {
   exerciseDefinitionId String
   muscleGroupId        String
@@ -130,17 +152,6 @@ model ExerciseDefinitionOnMuscleGroup {
 
   @@id([exerciseDefinitionId, muscleGroupId])
   @@index([muscleGroupId])
-}
-
-model ExerciseDefinitionOnEquipment {
-  exerciseDefinitionId String
-  equipmentId          String
-
-  exerciseDefinition ExerciseDefinition @relation(fields: [exerciseDefinitionId], references: [id], onDelete: Cascade)
-  equipment          Equipment          @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-
-  @@id([exerciseDefinitionId, equipmentId])
-  @@index([equipmentId])
 }
 
 model WorkoutExercise {
@@ -187,8 +198,8 @@ model SetLog {
   workoutExercise   WorkoutExercise? @relation(fields: [workoutExerciseId], references: [id], onDelete: SetNull)
 
   setNumber       Int
-  weightKg        Decimal?
-  reps            Int?
+  weightKg        Decimal
+  reps            Int
   distanceM       Decimal?
   durationSeconds Int?
   notes           String?
