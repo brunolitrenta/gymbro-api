@@ -103,9 +103,21 @@ export class WorkoutController {
     return this.workoutService.getSession(params.workoutId);
   }
 
+  @Get('session/all/:userId')
+  async getAllSessionsByUserId(@Param() params: { userId: string }) {
+    return this.workoutService.getAllSessionsByUserId(params.userId);
+  }
+
+  @Get('session/plan/:userId/:planId')
+  async getSessionsByPlanId(
+    @Param() params: { planId: string; userId: string },
+  ): Promise<ApiResponse<WorkoutSession[]>> {
+    return this.workoutService.getAllPlanSessions(params.userId, params.planId);
+  }
+
   @Get('exercises/info/:exerciseId')
   async getExerciseInformations(
-    @Param() params: { exerciseId: string, workoutId: string },
+    @Param() params: { exerciseId: string; workoutId: string },
   ): Promise<
     ApiResponse<Pick<WorkoutExercise, 'weightKg' | 'sets' | 'reps' | 'notes'>>
   > {

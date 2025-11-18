@@ -453,6 +453,57 @@ export class WorkoutService {
     };
   }
 
+  async getAllSessionsByUserId(
+    userId: string,
+  ): Promise<ApiResponse<WorkoutSession[]>> {
+    const sessions = await this.prisma.workoutSession.findMany({
+      where: { userId },
+      include: {
+        workout: {
+          select: {
+            name: true,
+            plan: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { finishedAt: 'desc' },
+    });
+    return {
+      data: sessions,
+      message: 'Sessões obtidas com sucesso',
+    };
+  }
+
+  async getAllPlanSessions(
+    userId: string,
+    planId: string,
+  ): Promise<ApiResponse<WorkoutSession[]>> {
+    const sessions = await this.prisma.workoutSession.findMany({
+      where: {
+        userId,
+        workout: {
+          planId,
+        },
+      },
+      include: {
+        workout: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { finishedAt: 'desc' },
+    });
+    return {
+      data: sessions,
+      message: 'Sessões do plano obtidas com sucesso',
+    };
+  }
+
   async getExerciseInformations(
     exerciseId: string,
   ): Promise<
