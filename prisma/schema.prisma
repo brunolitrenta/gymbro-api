@@ -104,7 +104,6 @@ model Workout {
   planId String
   plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
   name   String
-  day    Int
 
   items WorkoutExercise[]
 
@@ -113,7 +112,7 @@ model Workout {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([planId, day])
+  @@unique([planId, name])
   @@index([planId])
 }
 
@@ -163,7 +162,7 @@ model WorkoutExercise {
 
   sets        Int?
   reps        Int?
-  restSeconds Int?
+  weightKg    Int?
   notes       String?
 
   createdAt DateTime @default(now())

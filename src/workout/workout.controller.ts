@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { WorkoutService } from './workout.service';
 import type {
+  ExerciseDefinition,
   Plan,
   SetLog,
   Workout,
@@ -15,6 +16,20 @@ import { ApiResponse } from '../common/response.interface';
 export class WorkoutController {
   constructor(private readonly workoutService: WorkoutService) {}
 
+  @Post()
+  async createWorkout(
+    @Body() data: { planId: string; label: string; exerciseIds: string[] },
+  ): Promise<ApiResponse<{ id: string }>> {
+    return this.workoutService.createWorkout(data);
+  }
+
+  @Get(':planId')
+  async getWorkoutsByPlanId(
+    @Param() params: { planId: string },
+  ): Promise<ApiResponse<Workout[]>> {
+    return this.workoutService.getWorkoutsByPlanId(params.planId);
+  }
+
   @Post('plan')
   async createWorkoutPlan(
     @Body() data: { name: string; authorId: string },
@@ -22,33 +37,14 @@ export class WorkoutController {
     return this.workoutService.createPlan(data);
   }
 
-  @Post('workout')
-  async createWorkout(@Body() data: Workout): Promise<ApiResponse<{ id: string }>> {
-    return this.workoutService.createWorkout(data);
-  }
-
   @Get('plan/all/:userId')
   async getAllAccessiblePlans(@Param() params: { userId: string }) {
     return this.workoutService.getAllAccessiblePlans(params.userId);
   }
 
-  @Get('plan/received/:studentId')
-  async getReceivedPlans(@Param() params: { studentId: string }) {
-    return this.workoutService.getReceivedPlans(params.studentId);
-  }
-
-  @Get('plan/:authorId')
-  async getWorkoutPlans(
-    @Param() params: { authorId: string },
-  ): Promise<ApiResponse<Plan[]>> {
-    return this.workoutService.getAllPlans(params.authorId);
-  }
-
-  @Get('workout/:planId')
-  async getWorkoutsByPlanId(
-    @Param() params: { planId: string },
-  ): Promise<ApiResponse<Workout[]>> {
-    return this.workoutService.getWorkoutsByPlanId(params.planId);
+  @Get('exercises/all')
+  async getAllExercises(): Promise<ApiResponse<ExerciseDefinition[]>> {
+    return this.workoutService.getAllExercises();
   }
 
   @Get('exercises/:id')
@@ -58,14 +54,14 @@ export class WorkoutController {
     return this.workoutService.getExercisesByWorkoutId(params.id);
   }
 
-  @Post('workout/session/start')
+  @Post('session/start')
   async startWorkout(
     @Body() data: { workoutId: string; userId: string },
   ): Promise<ApiResponse<WorkoutSession>> {
     return this.workoutService.startSession(data.userId, data.workoutId);
   }
 
-  @Post('workout/session/set')
+  @Post('session/set')
   async addSetToSession(
     @Body()
     data: {
@@ -91,10 +87,28 @@ export class WorkoutController {
     });
   }
 
-  @Post('workout/session/finish')
+  @Post('session/finish')
   async finishWorkout(
     @Body() data: { userId: string; sessionId: string },
-  ): Promise<ApiResponse<{ id: string; userId: string; finishedAt: Date | null }>> {
+  ): Promise<
+    ApiResponse<{ id: string; userId: string; finishedAt: Date | null }>
+  > {
     return this.workoutService.finishSession(data.userId, data.sessionId);
+  }
+
+  @Get('session/:workoutId')
+  async getSession(
+    @Param() params: { workoutId: string },
+  ): Promise<ApiResponse<WorkoutSession>> {
+    return this.workoutService.getSession(params.workoutId);
+  }
+
+  @Get('exercises/info/:exerciseId')
+  async getExerciseInformations(
+    @Param() params: { exerciseId: string, workoutId: string },
+  ): Promise<
+    ApiResponse<Pick<WorkoutExercise, 'weightKg' | 'sets' | 'reps' | 'notes'>>
+  > {
+    return this.workoutService.getExerciseInformations(params.exerciseId);
   }
 }
