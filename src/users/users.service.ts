@@ -41,7 +41,7 @@ export class UsersService {
         updatedAt: date,
       },
     });
-    
+
     return {
       data: { id: user.id },
       message: 'Usuário criado com sucesso',
@@ -52,7 +52,9 @@ export class UsersService {
     trainerId: string;
     studentEmail: string;
     nickname?: string;
-  }): Promise<ApiResponse<{ trainerId: string; studentEmail: string; nickname?: string }>> {
+  }): Promise<
+    ApiResponse<{ trainerId: string; studentEmail: string; nickname?: string }>
+  > {
     const relation = await this.prisma.trainerRelation.create({
       data: {
         trainerId: data.trainerId,
@@ -60,7 +62,7 @@ export class UsersService {
         nickname: data.nickname,
       },
     });
-    
+
     return {
       data: {
         trainerId: relation.trainerId,
@@ -71,7 +73,10 @@ export class UsersService {
     };
   }
 
-  async deleteRelation(data: { trainerId: string; studentEmail: string }): Promise<ApiResponse<null>> {
+  async deleteRelation(data: {
+    trainerId: string;
+    studentEmail: string;
+  }): Promise<ApiResponse<null>> {
     await this.prisma.trainerRelation.delete({
       where: {
         trainerId_studentEmail: {
@@ -80,7 +85,7 @@ export class UsersService {
         },
       },
     });
-    
+
     return {
       data: null,
       message: 'Relação entre treinador e aluno removida com sucesso',
@@ -92,7 +97,7 @@ export class UsersService {
       where: { trainerId },
       include: { student: true },
     });
-    
+
     return {
       data: relations,
       message: 'Relações obtidas com sucesso',
@@ -112,7 +117,7 @@ export class UsersService {
         date: data.date || new Date(),
       },
     });
-    
+
     return {
       data: weightHistory,
       message: 'Peso registrado com sucesso',
@@ -125,7 +130,7 @@ export class UsersService {
       orderBy: { date: 'desc' },
       take: limit,
     });
-    
+
     return {
       data: history,
       message: 'Histórico de peso obtido com sucesso',
@@ -136,7 +141,7 @@ export class UsersService {
     await this.prisma.weightHistory.delete({
       where: { id },
     });
-    
+
     return {
       data: null,
       message: 'Registro de peso removido com sucesso',
@@ -154,7 +159,7 @@ export class UsersService {
         date: data.date,
       },
     });
-    
+
     return {
       data: updated,
       message: 'Registro de peso atualizado com sucesso',
@@ -198,7 +203,11 @@ export class UsersService {
       new Set(
         sessions.map((session) => {
           const date = new Date(session.startedAt);
-          return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+          return new Date(
+            date.getFullYear(),
+            date.getMonth(),
+            date.getDate(),
+          ).getTime();
         }),
       ),
     ).sort((a, b) => b - a);
@@ -277,9 +286,9 @@ export class UsersService {
     for (let i = 0; i < uniqueDates.length - 1; i++) {
       const currentDate = uniqueDates[i];
       const nextDate = uniqueDates[i + 1];
-      
+
       let expectedNextDate = getNextExpectedWorkoutDate(currentDate);
-      
+
       if (nextDate === expectedNextDate) {
         tempStreak++;
       } else {
@@ -327,8 +336,8 @@ export class UsersService {
    */
 
   async setWorkoutDays(userId: string, workoutDays: number[]) {
-    const validDays = workoutDays.filter(day => day >= 0 && day <= 6);
-    
+    const validDays = workoutDays.filter((day) => day >= 0 && day <= 6);
+
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { workoutDays: validDays },
@@ -346,14 +355,104 @@ export class UsersService {
       select: { workoutDays: true },
     });
 
-    const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    
+    const dayNames = [
+      'Domingo',
+      'Segunda',
+      'Terça',
+      'Quarta',
+      'Quinta',
+      'Sexta',
+      'Sábado',
+    ];
+
     return {
       data: {
         workoutDays: user?.workoutDays || [],
-        workoutDaysNames: (user?.workoutDays || []).map(day => dayNames[day]),
+        workoutDaysNames: (user?.workoutDays || []).map((day) => dayNames[day]),
       },
       message: 'Dias de treino obtidos com sucesso',
+    };
+  }
+
+  async getMainPageData(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { workoutDays: true },
+    });
+
+    const getStreak = await this.getWorkoutStreak(userId);
+
+    const sessions = await this.prisma.workoutSession.findMany({
+      where: {
+        userId,
+        startedAt: {
+          gte: new Date(new Date().setDate(1)),
+        },
+      },
+      select: {
+        startedAt: true,
+      },
+    });
+
+    const uniqueDays = new Set(
+      sessions.map((session) => {
+        const date = new Date(session.startedAt);
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+          .toISOString()
+          .split('T')[0];
+      }),
+    );
+
+    const monthSessions = uniqueDays.size;
+
+    const calculatePossibleSessions = (): number => {
+      const workoutDays = user?.workoutDays || [];
+
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+
+      let count = 0;
+      const currentDate = new Date(firstDay);
+
+      if (workoutDays.length === 0) {
+        while (currentDate <= lastDay) {
+          count++;
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        return count;
+      }
+
+      while (currentDate <= lastDay) {
+        const dayOfWeek = currentDate.getDay();
+        if (workoutDays.includes(dayOfWeek)) {
+          count++;
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      return count;
+    };
+
+    const totalPossibleSessions = calculatePossibleSessions();
+
+    const completionRate =
+      totalPossibleSessions > 0
+        ? Math.round((monthSessions / totalPossibleSessions) * 100)
+        : 0;
+
+    return {
+      data: {
+        currentStreak: getStreak?.data?.currentStreak,
+        monthSessions,
+        completedSessions: sessions,
+        totalPossibleSessions,
+        completionRate,
+      },
+      message: 'Dados da página principal obtidos com sucesso',
     };
   }
 }

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Post, UseGuards, Delete, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+  Delete,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import type { User } from '@prismaClient';
 import { AuthGuard } from 'src/auth/auth.guard';
@@ -109,5 +119,11 @@ export class UsersController {
   @UseGuards(AuthGuard)
   getWorkoutDays(@Param('userId') userId: string) {
     return this.usersService.getWorkoutDays(userId);
+  }
+
+  @Get('main/:userId')
+  @UseGuards(AuthGuard)
+  getMainData(@Param('userId') userId: string) {
+    return this.usersService.getMainPageData(userId);
   }
 }
