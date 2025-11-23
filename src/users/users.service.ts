@@ -21,8 +21,6 @@ export class UsersService {
       throw new ForbiddenException('Email já está em uso');
     }
 
-    const date = new Date();
-
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
     const user = await this.prisma.user.create({
@@ -37,8 +35,6 @@ export class UsersService {
         height: data.height,
         weight: data.weight,
         medical: data.medical,
-        createdAt: date,
-        updatedAt: date,
       },
     });
 
@@ -55,10 +51,31 @@ export class UsersService {
   }): Promise<
     ApiResponse<{ trainerId: string; studentEmail: string; nickname?: string }>
   > {
+    // Verify that both trainer and student exist
+    const trainer = await this.prisma.user.findUnique({
+      where: { id: data.trainerId },
+    });
+
+    if (!trainer) {
+      throw new ForbiddenException('Treinador não encontrado');
+    }
+
+    const student = await this.prisma.user.findUnique({
+      where: { email: data.studentEmail },
+    });
+
+    if (!student) {
+      throw new ForbiddenException('Aluno não encontrado');
+    }
+
     const relation = await this.prisma.trainerRelation.create({
       data: {
-        trainerId: data.trainerId,
-        studentEmail: data.studentEmail,
+        trainer: {
+          connect: { id: data.trainerId },
+        },
+        student: {
+          connect: { email: data.studentEmail },
+        },
         nickname: data.nickname,
       },
     });
@@ -167,13 +184,37 @@ export class UsersService {
   }
 
   /**
+   * Converte uma data UTC para o início do dia no timezone especificado
+   * @param date - Data a ser convertida
+   * @param timezone - Timezone IANA (ex: 'America/Sao_Paulo')
+   * @returns Timestamp do início do dia no timezone especificado
+   */
+  private getStartOfDayInTimezone(date: Date, timezone: string): number {
+    const dateStr = date.toLocaleString('en-US', { timeZone: timezone });
+    const localDate = new Date(dateStr);
+    localDate.setHours(0, 0, 0, 0);
+    return localDate.getTime();
+  }
+
+  /**
+   * Obtém a data/hora atual no timezone do usuário
+   * @param timezone - Timezone IANA
+   * @returns Data atual no timezone especificado
+   */
+  private getNowInTimezone(timezone: string): Date {
+    const nowStr = new Date().toLocaleString('en-US', { timeZone: timezone });
+    return new Date(nowStr);
+  }
+
+  /**
    * Calcula a sequência atual de dias consecutivos de treino do usuário
    * Considera todas as sessões (finalizadas ou abandonadas)
    * Respeita os dias da semana configurados pelo usuário (workoutDays)
    * @param userId - ID do usuário
+   * @param timezone - Timezone IANA do usuário (opcional, padrão: 'America/Sao_Paulo')
    * @returns objeto com currentStreak, longestStreak e lastWorkoutDate
    */
-  async getWorkoutStreak(userId: string) {
+  async getWorkoutStreak(userId: string, timezone?: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { workoutDays: true },
@@ -199,20 +240,23 @@ export class UsersService {
       };
     }
 
+    const userTimezone = timezone || 'America/Sao_Paulo';
+
+    // Converter todas as sessões para o timezone do usuário
     const uniqueDates = Array.from(
       new Set(
         sessions.map((session) => {
-          const date = new Date(session.startedAt);
-          return new Date(
-            date.getFullYear(),
-            date.getMonth(),
-            date.getDate(),
-          ).getTime();
+          return this.getStartOfDayInTimezone(
+            new Date(session.startedAt),
+            userTimezone,
+          );
         }),
       ),
     ).sort((a, b) => b - a);
 
-    const today = new Date();
+    // Calcular hoje e ontem no timezone do usuário
+    const nowInUserTz = this.getNowInTimezone(userTimezone);
+    const today = new Date(nowInUserTz);
     today.setHours(0, 0, 0, 0);
     const todayTime = today.getTime();
 
@@ -374,19 +418,26 @@ export class UsersService {
     };
   }
 
-  async getMainPageData(userId: string) {
+  async getMainPageData(userId: string, timezone?: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { workoutDays: true },
     });
 
-    const getStreak = await this.getWorkoutStreak(userId);
+    const userTimezone = timezone || 'America/Sao_Paulo';
+    const getStreak = await this.getWorkoutStreak(userId, timezone);
+
+    // Calcular o primeiro dia do mês no timezone do usuário
+    const nowInUserTz = this.getNowInTimezone(userTimezone);
+    const year = nowInUserTz.getFullYear();
+    const month = nowInUserTz.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1);
 
     const sessions = await this.prisma.workoutSession.findMany({
       where: {
         userId,
         startedAt: {
-          gte: new Date(new Date().setDate(1)),
+          gte: firstDayOfMonth,
         },
       },
       select: {
@@ -394,12 +445,15 @@ export class UsersService {
       },
     });
 
+    // Converter sessões para o timezone do usuário
     const uniqueDays = new Set(
       sessions.map((session) => {
-        const date = new Date(session.startedAt);
-        return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-          .toISOString()
-          .split('T')[0];
+        const sessionDate = new Date(session.startedAt);
+        const dateStr = sessionDate.toLocaleString('en-US', {
+          timeZone: userTimezone,
+        });
+        const localDate = new Date(dateStr);
+        return `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
       }),
     );
 
@@ -407,10 +461,6 @@ export class UsersService {
 
     const calculatePossibleSessions = (): number => {
       const workoutDays = user?.workoutDays || [];
-
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
 
       const firstDay = new Date(year, month, 1);
       const lastDay = new Date(year, month + 1, 0);
@@ -453,6 +503,84 @@ export class UsersService {
         completionRate,
       },
       message: 'Dados da página principal obtidos com sucesso',
+    };
+  }
+
+  async updateUser(userId: string, data: Partial<User>) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: data.name || undefined,
+        gender: data.gender || undefined,
+        birthDate: data.birthDate || undefined,
+        goal: data.goal || undefined,
+        height: data.height || undefined,
+        weight: data.weight || undefined,
+        medical: data.medical || undefined,
+        workoutDays: data.workoutDays || undefined,
+      },
+    });
+
+    if (data.weight !== undefined && data.weight !== null) {
+      await this.prisma.weightHistory.create({
+        data: {
+          userId: userId,
+          weightKg: data.weight,
+          date: new Date(),
+        },
+      });
+    }
+
+    return { data: updated, message: 'Usuário atualizado com sucesso' };
+  }
+
+  async getUserData(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    return { data: user, message: 'Dados do usuário obtidos com sucesso' };
+  }
+
+  async getProgressData(userId: string) {
+    const weightHistory = await this.prisma.weightHistory.findMany({
+      where: { userId },
+      orderBy: { date: 'asc' },
+    });
+
+    const sessions = await this.prisma.workoutSession.findMany({
+      where: { userId },
+      orderBy: { startedAt: 'asc' },
+    });
+
+    const currentStreak = await this.getWorkoutStreak(userId);
+
+    return {
+      data: {
+        weightHistory,
+        totalSessions: sessions.length,
+        currentStreak: currentStreak?.data?.currentStreak,
+      },
+      message: 'Dados de progresso obtidos com sucesso',
+    };
+  }
+
+  async getAllSetLogs(userId: string) {
+    const setLogs = await this.prisma.setLog.findMany({
+      where: { session: { userId } },
+      orderBy: { session: { startedAt: 'desc' } },
+      include: {
+        workoutExercise: {
+          include: {
+            exerciseDef: true,
+          },
+        },
+      },
+    });
+
+    return {
+      data: setLogs,
+      message: 'Registros de séries obtidos com sucesso',
     };
   }
 }

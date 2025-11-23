@@ -91,7 +91,16 @@ export class WorkoutService {
 
     const [trainer, plan] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: trainerId } }),
-      this.prisma.plan.findUnique({ where: { id: planId } }),
+      this.prisma.plan.findUnique({
+        where: { id: planId },
+        include: {
+          workouts: {
+            include: {
+              items: true,
+            },
+          },
+        },
+      }),
     ]);
 
     if (!trainer || trainer.type !== 'trainer') {
@@ -120,6 +129,85 @@ export class WorkoutService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
+        const existingAssignment = await tx.planAssignment.findFirst({
+          where: {
+            trainerId,
+            studentId: student.id,
+            plan: {
+              name: plan.name,
+              authorId: student.id,
+            },
+          },
+          include: {
+            plan: true,
+          },
+        });
+
+        let studentPlanId: string;
+
+        if (existingAssignment) {
+          studentPlanId = existingAssignment.planId;
+
+          await tx.workoutExercise.deleteMany({
+            where: {
+              workout: {
+                planId: studentPlanId,
+              },
+            },
+          });
+
+          await tx.workout.deleteMany({
+            where: {
+              planId: studentPlanId,
+            },
+          });
+
+          for (const workout of plan.workouts) {
+            const newWorkout = await tx.workout.create({
+              data: {
+                planId: studentPlanId,
+                name: workout.name,
+              },
+            });
+
+            if (workout.items.length > 0) {
+              await tx.workoutExercise.createMany({
+                data: workout.items.map((item) => ({
+                  workoutId: newWorkout.id,
+                  exerciseDefId: item.exerciseDefId,
+                })),
+              });
+            }
+          }
+        } else {
+          const studentPlan = await tx.plan.create({
+            data: {
+              name: plan.name,
+              authorId: student.id,
+            },
+          });
+
+          studentPlanId = studentPlan.id;
+
+          for (const workout of plan.workouts) {
+            const newWorkout = await tx.workout.create({
+              data: {
+                planId: studentPlan.id,
+                name: workout.name,
+              },
+            });
+
+            if (workout.items.length > 0) {
+              await tx.workoutExercise.createMany({
+                data: workout.items.map((item) => ({
+                  workoutId: newWorkout.id,
+                  exerciseDefId: item.exerciseDefId,
+                })),
+              });
+            }
+          }
+        }
+
         if (makeActive) {
           await tx.planAssignment.updateMany({
             where: { studentId: student.id, active: true },
@@ -128,13 +216,15 @@ export class WorkoutService {
         }
 
         const assignment = await tx.planAssignment.upsert({
-          where: { planId_studentId: { planId, studentId: student.id } },
+          where: {
+            planId_studentId: { planId: studentPlanId, studentId: student.id },
+          },
           update: {
             startDate: new Date(),
             ...(makeActive ? { active: true } : {}),
           },
           create: {
-            planId,
+            planId: studentPlanId,
             trainerId,
             studentId: student.id,
             startDate: new Date(),
@@ -152,10 +242,10 @@ export class WorkoutService {
         return assignment;
       });
 
-      // (opcional) notificar o aluno aqui (email/push), se tiver infra de notificações
-      // await notifyStudent(result.student.email, `Você recebeu o plano ${result.plan.name}`)
-
-      return result;
+      return {
+        data: null,
+        message: 'Plano encaminhado com sucesso para o aluno.',
+      };
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -207,9 +297,15 @@ export class WorkoutService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const [createdPlans, receivedAssignments] = await Promise.all([
+    const [allCreatedPlans, receivedAssignments] = await Promise.all([
       this.prisma.plan.findMany({
         where: { authorId: userId },
+        include: {
+          assignments: {
+            where: { studentId: userId },
+            select: { id: true },
+          },
+        },
       }),
       this.prisma.planAssignment.findMany({
         where: { studentId: userId },
@@ -236,9 +332,17 @@ export class WorkoutService {
       }),
     ]);
 
+    const createdPlans = allCreatedPlans.filter(
+      (plan) => plan.assignments.length === 0,
+    );
+
     const allPlans = [
       ...createdPlans.map((plan) => ({
-        ...plan,
+        id: plan.id,
+        authorId: plan.authorId,
+        name: plan.name,
+        createdAt: plan.createdAt,
+        updatedAt: plan.updatedAt,
         source: 'created' as const,
         assignment: null,
       })),
@@ -526,4 +630,27 @@ export class WorkoutService {
       message: 'Exercício encontrado com sucesso',
     };
   }
+
+  async deleteWorkout(workoutId: string): Promise<ApiResponse<null>> {
+    await this.prisma.workout.delete({
+      where: { id: workoutId },
+    });
+
+    return {
+      data: null,
+      message: 'Treino deletado com sucesso',
+    };
+  }
+
+  async deletePlan(planId: string): Promise<ApiResponse<null>> {
+    await this.prisma.plan.delete({
+      where: { id: planId },
+    });
+
+    return {
+      data: null,
+      message: 'Plano deletado com sucesso',
+    };
+  }
+
 }

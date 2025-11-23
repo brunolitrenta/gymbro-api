@@ -102,8 +102,11 @@ export class UsersController {
 
   @Get('workout-streak/:userId')
   @UseGuards(AuthGuard)
-  getWorkoutStreak(@Param('userId') userId: string) {
-    return this.usersService.getWorkoutStreak(userId);
+  getWorkoutStreak(
+    @Param('userId') userId: string,
+    @Query('timezone') timezone?: string,
+  ) {
+    return this.usersService.getWorkoutStreak(userId, timezone);
   }
 
   @Post('workout-days/:userId')
@@ -123,7 +126,37 @@ export class UsersController {
 
   @Get('main/:userId')
   @UseGuards(AuthGuard)
-  getMainData(@Param('userId') userId: string) {
+  getMainData(
+    @Param('userId') userId: string,
+    @Query('timezone') timezone?: string,
+  ) {
+    return this.usersService.getMainPageData(userId, timezone);
+  }
+
+  @Put(':userId')
+  @UseGuards(AuthGuard)
+  updateUser(
+    @Param('userId') userId: string,
+    @Body() updateData: Partial<User>,
+  ) {
+    return this.usersService.updateUser(userId, updateData);
+  }
+
+  @Get(':userId')
+  @UseGuards(AuthGuard)
+  getUserById(@Param('userId') userId: string) {
+    return this.usersService.getUserData(userId);
+  }
+
+  @Get('progress/:userId')
+  @UseGuards(AuthGuard)
+  getProgress(@Param('userId') userId: string) {
     return this.usersService.getMainPageData(userId);
+  }
+
+  @Get('progress/logs/:userId')
+  @UseGuards(AuthGuard)
+  getProgressLogs(@Param('userId') userId: string) {
+    return this.usersService.getAllSetLogs(userId);
   }
 }

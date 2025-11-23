@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { WorkoutService } from './workout.service';
 import type {
   ExerciseDefinition,
@@ -23,6 +31,13 @@ export class WorkoutController {
     return this.workoutService.createWorkout(data);
   }
 
+  @Delete(':id')
+  async deleteWorkout(
+    @Param() params: { id: string },
+  ): Promise<ApiResponse<null>> {
+    return this.workoutService.deleteWorkout(params.id);
+  }
+
   @Get(':planId')
   async getWorkoutsByPlanId(
     @Param() params: { planId: string },
@@ -35,6 +50,31 @@ export class WorkoutController {
     @Body() data: { name: string; authorId: string },
   ): Promise<ApiResponse<Plan>> {
     return this.workoutService.createPlan(data);
+  }
+
+  @Delete('plan/:id')
+  async deleteWorkoutPlan(
+    @Param() params: { id: string },
+  ): Promise<ApiResponse<null>> {
+    return this.workoutService.deletePlan(params.id);
+  }
+
+  @Post('plan/share')
+  async shareWorkoutPlan(
+    @Body()
+    data: {
+      planId: string;
+      trainerId: string;
+      studentId: string;
+      studentEmail: string;
+    },
+  ): Promise<ApiResponse<null>> {
+    return this.workoutService.sendPlan({
+      planId: data.planId,
+      trainerId: data.trainerId,
+      studentId: data.studentId,
+      studentEmail: data.studentEmail,
+    });
   }
 
   @Get('plan/all/:userId')
