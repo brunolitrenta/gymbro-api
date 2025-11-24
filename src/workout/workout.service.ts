@@ -645,10 +645,6 @@ export class WorkoutService {
   }
 
   async deletePlan(planId: string): Promise<ApiResponse<null>> {
-    await this.prisma.workout.deleteMany({
-      where: { planId },
-    });
-
     await this.prisma.plan.delete({
       where: { id: planId },
     });
