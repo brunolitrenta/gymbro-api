@@ -105,7 +105,7 @@ export class UsersService {
 
     return {
       data: null,
-      message: 'Relação entre treinador e aluno removida com sucesso',
+      message: 'Relação removida com sucesso',
     };
   }
 
@@ -242,7 +242,6 @@ export class UsersService {
 
     const userTimezone = timezone || 'America/Sao_Paulo';
 
-    // Converter todas as sessões para o timezone do usuário
     const uniqueDates = Array.from(
       new Set(
         sessions.map((session) => {
@@ -254,7 +253,6 @@ export class UsersService {
       ),
     ).sort((a, b) => b - a);
 
-    // Calcular hoje e ontem no timezone do usuário
     const nowInUserTz = this.getNowInTimezone(userTimezone);
     const today = new Date(nowInUserTz);
     today.setHours(0, 0, 0, 0);
@@ -427,7 +425,6 @@ export class UsersService {
     const userTimezone = timezone || 'America/Sao_Paulo';
     const getStreak = await this.getWorkoutStreak(userId, timezone);
 
-    // Calcular o primeiro dia do mês no timezone do usuário
     const nowInUserTz = this.getNowInTimezone(userTimezone);
     const year = nowInUserTz.getFullYear();
     const month = nowInUserTz.getMonth();
@@ -445,7 +442,6 @@ export class UsersService {
       },
     });
 
-    // Converter sessões para o timezone do usuário
     const uniqueDays = new Set(
       sessions.map((session) => {
         const sessionDate = new Date(session.startedAt);
@@ -543,13 +539,26 @@ export class UsersService {
   }
 
   async getProgressData(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { goal: true },
+    });
+
     const weightHistory = await this.prisma.weightHistory.findMany({
       where: { userId },
       orderBy: { date: 'asc' },
     });
 
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
     const sessions = await this.prisma.workoutSession.findMany({
-      where: { userId },
+      where: {
+        userId,
+        startedAt: {
+          gte: firstDayOfMonth,
+        },
+      },
       orderBy: { startedAt: 'asc' },
     });
 
@@ -558,7 +567,8 @@ export class UsersService {
     return {
       data: {
         weightHistory,
-        totalSessions: sessions.length,
+        goal: user?.goal,
+        monthSessionsCount: sessions?.length,
         currentStreak: currentStreak?.data?.currentStreak,
       },
       message: 'Dados de progresso obtidos com sucesso',
@@ -570,9 +580,14 @@ export class UsersService {
       where: { session: { userId } },
       orderBy: { session: { startedAt: 'desc' } },
       include: {
+        session: true,
         workoutExercise: {
-          include: {
-            exerciseDef: true,
+          select: {
+            exerciseDef: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },

@@ -35,7 +35,7 @@ export class UsersController {
     return this.usersService.createRelation(relationData);
   }
 
-  @Post('relation/delete')
+  @Delete('relation/delete')
   @UseGuards(AuthGuard)
   deleteRelation(
     @Body() relationData: { trainerId: string; studentEmail: string },
@@ -124,6 +124,18 @@ export class UsersController {
     return this.usersService.getWorkoutDays(userId);
   }
 
+  @Get('progress/logs/:userId')
+  @UseGuards(AuthGuard)
+  getProgressLogs(@Param('userId') userId: string) {
+    return this.usersService.getAllSetLogs(userId);
+  }
+
+  @Get('progress/:userId')
+  @UseGuards(AuthGuard)
+  getProgress(@Param('userId') userId: string) {
+    return this.usersService.getProgressData(userId);
+  }
+
   @Get('main/:userId')
   @UseGuards(AuthGuard)
   getMainData(
@@ -146,17 +158,5 @@ export class UsersController {
   @UseGuards(AuthGuard)
   getUserById(@Param('userId') userId: string) {
     return this.usersService.getUserData(userId);
-  }
-
-  @Get('progress/:userId')
-  @UseGuards(AuthGuard)
-  getProgress(@Param('userId') userId: string) {
-    return this.usersService.getMainPageData(userId);
-  }
-
-  @Get('progress/logs/:userId')
-  @UseGuards(AuthGuard)
-  getProgressLogs(@Param('userId') userId: string) {
-    return this.usersService.getAllSetLogs(userId);
   }
 }
