@@ -109,6 +109,7 @@ export class WorkoutController {
       sessionId: string;
       exerciseId: string;
       reps: number;
+      restSeconds?: number;
       weight: number;
       sets: number;
       distance?: number;
@@ -121,6 +122,7 @@ export class WorkoutController {
       reps: data.reps,
       weightKg: data.weight,
       sets: data.sets,
+      restSeconds: data.restSeconds,
       distanceM: data.distance,
       durationSeconds: data.duration,
       notes: data.notes,

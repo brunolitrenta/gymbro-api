@@ -132,8 +132,8 @@ export class UsersController {
 
   @Get('progress/:userId')
   @UseGuards(AuthGuard)
-  getProgress(@Param('userId') userId: string) {
-    return this.usersService.getProgressData(userId);
+  getProgress(@Param('userId') userId: string,@Query('timezone') timezone?: string,) {
+    return this.usersService.getProgressData(userId, timezone);
   }
 
   @Get('main/:userId')

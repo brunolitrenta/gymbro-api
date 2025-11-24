@@ -538,7 +538,7 @@ export class UsersService {
     return { data: user, message: 'Dados do usuário obtidos com sucesso' };
   }
 
-  async getProgressData(userId: string) {
+  async getProgressData(userId: string, timezone?: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { goal: true },
@@ -562,7 +562,7 @@ export class UsersService {
       orderBy: { startedAt: 'asc' },
     });
 
-    const currentStreak = await this.getWorkoutStreak(userId);
+    const currentStreak = await this.getWorkoutStreak(userId, timezone);
 
     return {
       data: {

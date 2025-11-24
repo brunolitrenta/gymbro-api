@@ -451,6 +451,7 @@ export class WorkoutService {
       weightKg: number;
       sets: number;
       reps: number;
+      restSeconds?: number;
       distanceM?: number;
       durationSeconds?: number;
       notes?: string;
@@ -475,6 +476,7 @@ export class WorkoutService {
       data: {
         sets: payload.sets ?? null,
         reps: payload.reps ?? null,
+        restSeconds: payload.restSeconds ?? null,
         weightKg: payload.weightKg ?? null,
         notes: payload.notes ?? null,
       },

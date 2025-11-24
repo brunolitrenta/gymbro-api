@@ -11,6 +11,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum userType {
@@ -162,6 +163,7 @@ model WorkoutExercise {
   sets        Int?
   reps        Int?
   weightKg    Int?
+  restSeconds Int?
   notes       String?
 
   createdAt DateTime @default(now())
