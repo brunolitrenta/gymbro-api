@@ -183,7 +183,6 @@ model WorkoutSession {
 
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
-  notes      String?
 
   sets SetLog[]
 

@@ -223,11 +223,14 @@ export class UsersService {
     const sessions = await this.prisma.workoutSession.findMany({
       where: {
         userId,
+        finishedAt: {
+          not: null,
+        }
       },
-      orderBy: { startedAt: 'desc' },
+      orderBy: { finishedAt: 'desc' },
       select: {
-        startedAt: true,
         finishedAt: true,
+
       },
     });
 
@@ -246,7 +249,7 @@ export class UsersService {
       new Set(
         sessions.map((session) => {
           return this.getStartOfDayInTimezone(
-            new Date(session.startedAt),
+            new Date(session.finishedAt!),
             userTimezone,
           );
         }),
@@ -439,12 +442,13 @@ export class UsersService {
       },
       select: {
         startedAt: true,
+        finishedAt: true,
       },
     });
 
     const uniqueDays = new Set(
       sessions.map((session) => {
-        const sessionDate = new Date(session.startedAt);
+        const sessionDate = new Date(session.finishedAt || session.startedAt);
         const dateStr = sessionDate.toLocaleString('en-US', {
           timeZone: userTimezone,
         });
