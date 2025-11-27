@@ -292,37 +292,27 @@ export class UsersService {
       return nextTime;
     };
 
-    let currentStreak = 0;
-    let expectedDate = isActiveToday ? todayTime : yesterdayTime;
-
-    if (!isActiveToday && hasScheduledDays && !isRestDay(todayTime)) {
-      currentStreak = 0;
-    } else {
-      for (const dateTime of uniqueDates) {
-        if (dateTime === expectedDate) {
+    let currentStreak = 1;
+    let streakEnded = false;
+    for (let i = 0; i < uniqueDates.length - 1; i++) {
+      const currentDate = uniqueDates[i];
+      const nextDate = uniqueDates[i + 1];
+      let tempDate = currentDate;
+      while (true) {
+        tempDate = getNextExpectedWorkoutDate(tempDate);
+        if (tempDate === nextDate) {
           currentStreak++;
-          expectedDate = getNextExpectedWorkoutDate(expectedDate);
-        } else if (dateTime < expectedDate) {
-          let tempDate = expectedDate;
-          let foundMatch = false;
-
-          while (tempDate > dateTime) {
-            if (tempDate === dateTime) {
-              foundMatch = true;
-              currentStreak++;
-              expectedDate = getNextExpectedWorkoutDate(dateTime);
-              break;
-            }
-            if (isRestDay(tempDate)) {
-              tempDate = getNextExpectedWorkoutDate(tempDate);
-            } else {
-              break;
-            }
-          }
-
-          if (!foundMatch) break;
+          break;
+        }
+        if (hasScheduledDays && !isRestDay(tempDate) && tempDate !== nextDate) {
+          streakEnded = true;
+          break;
+        }
+        if (tempDate < nextDate) {
+          break;
         }
       }
+      if (streakEnded) break;
     }
 
     let longestStreak = 0;
