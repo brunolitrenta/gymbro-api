@@ -34,6 +34,7 @@ export class UsersService {
         goal: data.goal,
         height: data.height,
         weight: data.weight,
+        workoutDays: data.workoutDays || [],
         medical: data.medical,
       },
     });
@@ -292,27 +293,38 @@ export class UsersService {
       return nextTime;
     };
 
-    let currentStreak = 1;
+    let currentStreak = 0;
     let streakEnded = false;
-    for (let i = 0; i < uniqueDates.length - 1; i++) {
-      const currentDate = uniqueDates[i];
-      const nextDate = uniqueDates[i + 1];
-      let tempDate = currentDate;
-      while (true) {
+    let lastExpectedDay = todayTime;
+    if (!isActiveToday) {
+      let tempDate = todayTime;
+      do {
         tempDate = getNextExpectedWorkoutDate(tempDate);
-        if (tempDate === nextDate) {
-          currentStreak++;
-          break;
+      } while (hasScheduledDays && isRestDay(tempDate) && tempDate >= uniqueDates[0]);
+      lastExpectedDay = tempDate;
+    }
+    if (uniqueDates[0] === lastExpectedDay) {
+      currentStreak = 1;
+      for (let i = 0; i < uniqueDates.length - 1; i++) {
+        const currentDate = uniqueDates[i];
+        const nextDate = uniqueDates[i + 1];
+        let tempDate = currentDate;
+        while (true) {
+          tempDate = getNextExpectedWorkoutDate(tempDate);
+          if (tempDate === nextDate) {
+            currentStreak++;
+            break;
+          }
+          if (hasScheduledDays && !isRestDay(tempDate) && tempDate !== nextDate) {
+            streakEnded = true;
+            break;
+          }
+          if (tempDate < nextDate) {
+            break;
+          }
         }
-        if (hasScheduledDays && !isRestDay(tempDate) && tempDate !== nextDate) {
-          streakEnded = true;
-          break;
-        }
-        if (tempDate < nextDate) {
-          break;
-        }
+        if (streakEnded) break;
       }
-      if (streakEnded) break;
     }
 
     let longestStreak = 0;
