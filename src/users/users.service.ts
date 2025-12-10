@@ -262,10 +262,6 @@ export class UsersService {
     today.setHours(0, 0, 0, 0);
     const todayTime = today.getTime();
 
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayTime = yesterday.getTime();
-
     const isActiveToday = uniqueDates[0] === todayTime;
 
     const workoutDays = user?.workoutDays || [];
@@ -293,72 +289,45 @@ export class UsersService {
       return nextTime;
     };
 
+    const areConsecutiveWorkoutDays = (
+      currentDate: number,
+      nextDate: number,
+    ): boolean => {
+      const expectedNextDate = getNextExpectedWorkoutDate(currentDate);
+      return expectedNextDate === nextDate;
+    };
+
     let currentStreak = 0;
-    let streakEnded = false;
-    let lastExpectedDay = todayTime;
-    if (!isActiveToday) {
-      let tempDate = todayTime;
-      do {
-        tempDate = getNextExpectedWorkoutDate(tempDate);
-      } while (hasScheduledDays && isRestDay(tempDate) && tempDate >= uniqueDates[0]);
-      lastExpectedDay = tempDate;
-    }
+    const lastExpectedDay = isActiveToday
+      ? todayTime
+      : getNextExpectedWorkoutDate(todayTime);
+
     if (uniqueDates[0] === lastExpectedDay) {
       currentStreak = 1;
       for (let i = 0; i < uniqueDates.length - 1; i++) {
         const currentDate = uniqueDates[i];
         const nextDate = uniqueDates[i + 1];
-        let tempDate = currentDate;
-        while (true) {
-          tempDate = getNextExpectedWorkoutDate(tempDate);
-          if (tempDate === nextDate) {
-            currentStreak++;
-            break;
-          }
-          if (hasScheduledDays && !isRestDay(tempDate) && tempDate !== nextDate) {
-            streakEnded = true;
-            break;
-          }
-          if (tempDate < nextDate) {
-            break;
-          }
+
+        if (areConsecutiveWorkoutDays(currentDate, nextDate)) {
+          currentStreak++;
+        } else {
+          break;
         }
-        if (streakEnded) break;
       }
     }
 
-    let longestStreak = 0;
+    let longestStreak = uniqueDates.length > 0 ? 1 : 0;
     let tempStreak = 1;
 
     for (let i = 0; i < uniqueDates.length - 1; i++) {
       const currentDate = uniqueDates[i];
       const nextDate = uniqueDates[i + 1];
 
-      let expectedNextDate = getNextExpectedWorkoutDate(currentDate);
-
-      if (nextDate === expectedNextDate) {
+      if (areConsecutiveWorkoutDays(currentDate, nextDate)) {
         tempStreak++;
       } else {
-        let tempDate = expectedNextDate;
-        let isValid = false;
-
-        while (tempDate >= nextDate) {
-          if (tempDate === nextDate) {
-            isValid = true;
-            tempStreak++;
-            break;
-          }
-          if (hasScheduledDays && isRestDay(tempDate)) {
-            tempDate = getNextExpectedWorkoutDate(tempDate);
-          } else {
-            break;
-          }
-        }
-
-        if (!isValid) {
-          longestStreak = Math.max(longestStreak, tempStreak);
-          tempStreak = 1;
-        }
+        longestStreak = Math.max(longestStreak, tempStreak);
+        tempStreak = 1;
       }
     }
     longestStreak = Math.max(longestStreak, tempStreak);
