@@ -39,6 +39,16 @@ export class UsersService {
       },
     });
 
+    if (data.weight !== undefined && data.weight !== null) {
+      await this.prisma.weightHistory.create({
+        data: {
+          userId: user.id,
+          weightKg: data.weight,
+          date: new Date(),
+        },
+      });
+    }
+
     return {
       data: { id: user.id },
       message: 'Usuário criado com sucesso',
