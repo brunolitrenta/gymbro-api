@@ -236,118 +236,114 @@ export class UsersService {
         userId,
         finishedAt: {
           not: null,
-        }
+        },
       },
       orderBy: { finishedAt: 'desc' },
       select: {
         finishedAt: true,
-
       },
     });
 
+    const workoutDays = user?.workoutDays || [];
+    const scheduledDays =
+      workoutDays.length > 0 ? workoutDays : [0, 1, 2, 3, 4, 5, 6];
+
     if (sessions.length === 0) {
       return {
-        currentStreak: 0,
-        longestStreak: 0,
-        lastWorkoutDate: null,
-        isActiveToday: false,
+        data: {
+          currentStreak: 0,
+          longestStreak: 0,
+          lastWorkoutDate: null,
+          isActiveToday: false,
+          totalWorkoutDays: 0,
+          scheduledWorkoutDays: workoutDays,
+        },
+        message: 'Sequência de treinos obtida com sucesso',
       };
     }
 
     const userTimezone = timezone || 'America/Sao_Paulo';
 
+    const getStartOfDay = (date: Date) => {
+      return this.getStartOfDayInTimezone(date, userTimezone);
+    };
+
     const uniqueDates = Array.from(
       new Set(
         sessions.map((session) => {
-          return this.getStartOfDayInTimezone(
-            new Date(session.finishedAt!),
-            userTimezone,
-          );
+          return getStartOfDay(new Date(session.finishedAt!));
         }),
       ),
     ).sort((a, b) => b - a);
 
     const nowInUserTz = this.getNowInTimezone(userTimezone);
-    const today = new Date(nowInUserTz);
-    today.setHours(0, 0, 0, 0);
-    const todayTime = today.getTime();
+    const todayTimestamp = getStartOfDay(nowInUserTz);
 
-    const isActiveToday = uniqueDates[0] === todayTime;
-
-    const workoutDays = user?.workoutDays || [];
-    const hasScheduledDays = workoutDays.length > 0;
-
-    const isRestDay = (dateTime: number): boolean => {
-      if (!hasScheduledDays) return false;
-      const date = new Date(dateTime);
-      const dayOfWeek = date.getDay();
-      return !workoutDays.includes(dayOfWeek);
+    const getDayOfWeek = (timestamp: number): number => {
+      return new Date(timestamp).getDay();
     };
 
-    const getNextExpectedWorkoutDate = (currentDate: number): number => {
-      let nextDate = new Date(currentDate);
-      nextDate.setDate(nextDate.getDate() - 1);
-      let nextTime = nextDate.getTime();
-
-      if (hasScheduledDays) {
-        while (isRestDay(nextTime)) {
-          nextDate.setDate(nextDate.getDate() - 1);
-          nextTime = nextDate.getTime();
+    const hasMissedDays = (newerDate: number, olderDate: number): boolean => {
+      const oneDay = 24 * 60 * 60 * 1000;
+      let current = olderDate + oneDay;
+      while (current < newerDate) {
+        if (scheduledDays.includes(getDayOfWeek(current))) {
+          return true;
         }
+        current += oneDay;
       }
-
-      return nextTime;
-    };
-
-    const areConsecutiveWorkoutDays = (
-      currentDate: number,
-      nextDate: number,
-    ): boolean => {
-      const expectedNextDate = getNextExpectedWorkoutDate(currentDate);
-      return expectedNextDate === nextDate;
+      return false;
     };
 
     let currentStreak = 0;
-    const lastExpectedDay = isActiveToday
-      ? todayTime
-      : getNextExpectedWorkoutDate(todayTime);
+    const lastWorkoutDate = uniqueDates[0];
 
-    if (uniqueDates[0] === lastExpectedDay) {
+    let isStreakAlive = true;
+    if (lastWorkoutDate < todayTimestamp) {
+      if (hasMissedDays(todayTimestamp, lastWorkoutDate)) {
+        isStreakAlive = false;
+      }
+    }
+
+    if (isStreakAlive) {
       currentStreak = 1;
       for (let i = 0; i < uniqueDates.length - 1; i++) {
-        const currentDate = uniqueDates[i];
-        const nextDate = uniqueDates[i + 1];
-
-        if (areConsecutiveWorkoutDays(currentDate, nextDate)) {
-          currentStreak++;
-        } else {
+        const newer = uniqueDates[i];
+        const older = uniqueDates[i + 1];
+        if (hasMissedDays(newer, older)) {
           break;
         }
+        currentStreak++;
       }
     }
 
-    let longestStreak = uniqueDates.length > 0 ? 1 : 0;
-    let tempStreak = 1;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    const sortedDatesAsc = [...uniqueDates].sort((a, b) => a - b);
 
-    for (let i = 0; i < uniqueDates.length - 1; i++) {
-      const currentDate = uniqueDates[i];
-      const nextDate = uniqueDates[i + 1];
+    if (sortedDatesAsc.length > 0) {
+      tempStreak = 1;
+      longestStreak = 1;
+      for (let i = 1; i < sortedDatesAsc.length; i++) {
+        const newer = sortedDatesAsc[i];
+        const older = sortedDatesAsc[i - 1];
 
-      if (areConsecutiveWorkoutDays(currentDate, nextDate)) {
-        tempStreak++;
-      } else {
-        longestStreak = Math.max(longestStreak, tempStreak);
-        tempStreak = 1;
+        if (hasMissedDays(newer, older)) {
+          longestStreak = Math.max(longestStreak, tempStreak);
+          tempStreak = 1;
+        } else {
+          tempStreak++;
+        }
       }
+      longestStreak = Math.max(longestStreak, tempStreak);
     }
-    longestStreak = Math.max(longestStreak, tempStreak);
 
     return {
       data: {
         currentStreak,
         longestStreak,
-        lastWorkoutDate: new Date(uniqueDates[0]),
-        isActiveToday,
+        lastWorkoutDate: new Date(lastWorkoutDate),
+        isActiveToday: lastWorkoutDate === todayTimestamp,
         totalWorkoutDays: uniqueDates.length,
         scheduledWorkoutDays: workoutDays,
       },
